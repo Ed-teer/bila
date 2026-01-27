@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Turniej Bilardowy - System Organizacji</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    /* CSS zostanie dodany w kolejnej części */
+  </style>
+</head>
+<body>
+  <h1>🎱 Turniej Bilardowy</h1>
+
+  <div class="container">
+    <!-- Panel zarządzania graczami -->
+    <div class="panel">
+      <h2>👥 Zarządzanie Graczami</h2>
+
+      <h3 class="section-title">➕ Dodaj nowego gracza</h3>
+      <div>
+        <input type="text" id="newPlayerName" placeholder="Wprowadź imię i nazwisko">
+        <button type="button" id="addPlayerBtn">Dodaj do bazy</button>
+      </div>
+
+      <h3 class="section-title">📋 Baza graczy <span class="badge" id="playerCount">0</span></h3>
+      <div class="player-pool" id="playerPool">
+        <p>Brak graczy w bazie. Dodaj pierwszego gracza.</p>
+      </div>
+
+      <h3 class="section-title">🏆 Gracze w turnieju <span class="badge" id="tournamentPlayerCount">0</span></h3>
+      <div id="tournamentPlayers">
+        <p>Wybierz graczy z bazy powyżej</p>
+      </div>
+
+      <button type="button" id="startBtn" disabled>🚀 Rozpocznij turniej</button>
+      <button type="button" id="resetBtn" class="danger" disabled>🔄 Zresetuj turniej</button>
+      <button type="button" id="exportBtn" class="secondary" style="display:none;">📤 Eksportuj do CSV</button>
+
+      <div>
+        <label for="rounds">Liczba rund:</label>
+        <select id="rounds">
+          <option value="3">3 rundy</option>
+          <option value="4">4 rundy</option>
+          <option value="5">5 rund</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="gameType">Gramy do:</label>
+        <select id="gameType">
+          <option value="3">3-wygrane</option>
+          <option value="4">4-wygrane</option>
+          <option value="5">5-wygrane</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Panel meczów -->
+    <div class="panel">
+      <h2>
+        📅 Mecze
+        <span class="status-badge" id="tournamentStatus">Nieaktywny</span>
+        <span id="currentRoundInfo"></span>
+      </h2>
+      <div id="matchesContainer">
+        <p>Wybierz graczy i rozpocznij turniej, aby zobaczyć mecze.</p>
+      </div>
+    </div>
+
+    <!-- Panel rankingu -->
+    <div class="panel">
+      <h2>🏅 Ranking</h2>
+      <table id="rankingTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Zawodnik</th>
+            <th>Mecze</th>
+            <th>Wygrane</th>
+            <th>Partie</th>
+            <th>%</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <button type="button" id="generatePlayoffBtn">🔁 Wygeneruj drabinkę play-off</button>
+      <button type="button" id="updatePlayoffBtn">🔁 Aktualizuj wyniki drabinki</button>
+    </div>
+
+    <!-- Panel play-off -->
+    <div class="panel">
+      <h2>🏁 Drabinka play-off</h2>
+      <div id="playoffContainer"></div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
