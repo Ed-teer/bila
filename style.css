@@ -1,189 +1,265 @@
-/* Podstawowe style */
+/* style_with_tables_v2.css */
 :root {
-    --felt-color: #2a5c45; /* Kolor sukna */
-    --wood-color: #8B4513; /* Drewniana rama */
-    --ball-color: #fff;
-    --cue-color: #d9a441;
-    --primary-color: #4CAF50;
-    --danger-color: #f44336;
-    --warning-color: #ff9800;
-    --light-gray: #f5f5f5;
-    --medium-gray: #ddd;
-    --dark-gray: #666;
+  --felt-color: #2a5c45;
+  --wood-color: #8B4513;
+  --cue-color: #d9a441;
+  --danger-color: #f44336;
+  --warning-color: #ff9800;
 }
 
 body {
-    font-family: 'Roboto', sans-serif;
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 20px;
-    background-color: var(--felt-color);
-    background-image: 
-        radial-gradient(circle at 25% 25%, rgba(255,255,255,0.1) 0%, transparent 50%),
-        linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, transparent 20%);
-    line-height: 1.6;
-    color: #333;
+  font-family: 'Roboto', sans-serif;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: var(--felt-color);
+  background-image:
+    radial-gradient(circle at 25% 25%, rgba(255,255,255,0.1) 0%, transparent 50%),
+    linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, transparent 20%);
+  line-height: 1.6;
+  color: #333;
 }
 
 .container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-    gap: 25px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 25px;
 }
 
 .panel {
-    background-color: rgba(255, 255, 255, 0.95);
-    border-radius: 10px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-    padding: 25px;
-    transition: transform 0.3s ease;
-    border: 3px solid var(--wood-color);
-    position: relative;
-    overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.95);
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  padding: 25px;
+  border: 3px solid var(--wood-color);
+  position: relative;
+  overflow: hidden;
 }
-
 
 .round-separator {
-    margin: 30px 0;
-    border: none;
-    border-top: 2px dashed #ccc;
+  margin: 30px 0;
+  border: none;
+  border-top: 2px dashed #ccc;
 }
 
-/* Style nagłówków */
 h1 {
-    color: white;
-    text-align: center;
-    margin-bottom: 30px;
-    font-size: 2.5em;
-    font-family: 'Playfair Display', serif;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-    background-color: var(--wood-color);
-    padding: 15px;
-    border-radius: 8px;
-    border: 2px solid #fff;
+  color: white;
+  text-align: center;
+  margin-bottom: 30px;
+  font-size: 2.5em;
+  font-family: 'Playfair Display', serif;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+  background-color: var(--wood-color);
+  padding: 15px;
+  border-radius: 8px;
+  border: 2px solid #fff;
 }
 
 h2 {
-    color: var(--wood-color);
-    margin-top: 0;
-    font-size: 1.5em;
-    border-bottom: 2px solid var(--cue-color);
-    padding-bottom: 8px;
-    display: flex;
-    align-items: center;
+  color: var(--wood-color);
+  margin-top: 0;
+  font-size: 1.5em;
+  border-bottom: 2px solid var(--cue-color);
+  padding-bottom: 8px;
+  display: flex;
+  align-items: center;
 }
 
-/* Style przycisków */
-
-
-.edit-btn {
-    background-color: #ff9800;
-    color: white;
-    border: none;
-    padding: 5px 10px;
-    border-radius: 4px;
-    margin-left: 10px;
-    cursor: pointer;
+select, input[type="text"], input[type="number"] {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  outline: none;
 }
+
+select:disabled, input:disabled { opacity: 0.6; }
 
 button {
-    background-color: var(--cue-color);
-    color: #000;
-    border: none;
-    padding: 12px 20px;
-    border-radius: 6px;
-    cursor: pointer;
-    margin: 8px 0;
-    font-size: 1em;
-    transition: all 0.3s;
-    font-weight: bold;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  background-color: var(--cue-color);
+  color: #000;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin: 8px 0;
+  font-size: 1em;
+  transition: all 0.3s;
+  font-weight: bold;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
-
 button:hover {
-    background-color: #e6b422;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  background-color: #e6b422;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+button.danger { background: var(--danger-color); color:#fff; }
+button.warning { background: var(--warning-color); color:#fff; }
+button.secondary { background: #ddd; }
+
+.badge {
+  display: inline-block;
+  background: #eee;
+  border: 1px solid #ccc;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  margin-left: 6px;
+}
+.status-badge {
+  margin-left: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+}
+.status-active { background: #d1f5d8; border-color: #7ad08a; }
+.status-ended { background: #f3f3f3; }
+
+.player-item {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:8px;
+  border-bottom:1px dashed #ddd;
+}
+.checkbox-label { display:flex; align-items:center; gap:8px; cursor:pointer; }
+.player-pool {
+  max-height:260px;
+  overflow:auto;
+  border:1px solid #ddd;
+  border-radius:8px;
+  padding:6px;
+  background:#fff;
 }
 
-/* Style tabeli i meczów */
-/* .match { */
-    /* margin-bottom: 15px; */
-    /* padding: 15px; */
-    /* background-color: rgba(234, 247, 255, 0.8); */
-    /* border-radius: 8px; */
-    /* border-left: 4px solid var(--cue-color); */
-    /* position: relative; */
-/* } */
-
+/* Liga (mecze) */
 .match {
-    margin: 5px 0;
-    display: flex;
-    gap: 10px;
-    align-items: center;
+  margin: 5px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background-color: rgba(234, 247, 255, 0.8);
+  border-radius: 8px;
+  border-left: 4px solid var(--cue-color);
+  position: relative;
 }
-
-.playoff-round {
-    margin-bottom: 20px;
-    border: 1px solid #ccc;
-    padding: 10px;
-    border-radius: 8px;
+.match.playing {
+  border-left-color: #5bc0de;
+  background-color: #eef9ff;
 }
-
-
-
-.match::before {
-    content: "";
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    width: 20px;
-    height: 20px;
-    background-color: white;
-    border-radius: 50%;
-    border: 2px solid var(--wood-color);
+.match.completed { opacity: 0.85; }
+.match-controls {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
 }
-.match-row {
-    margin: 8px 0;
+.edit-btn {
+  background-color:#ff9800;
+  color:white;
+  border:none;
+  padding:5px 10px;
+  border-radius:4px;
+  margin-left:10px;
+  cursor:pointer;
 }
-
-.score-input {
-    width: 40px;
-    margin: 0 4px;
-}
-
-
-
-/* Animacje bilardowe */
-@keyframes ballRoll {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
 .billiard-ball {
-    display: inline-block;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background-color: white;
-    text-align: center;
-    line-height: 24px;
-    font-weight: bold;
-    margin: 0 5px;
-    border: 1px solid #000;
+  display:inline-block;
+  width:24px;
+  height:24px;
+  border-radius:50%;
+  background-color:white;
+  border:1px solid #000;
 }
 
-/* Responsywność */
-@media (max-width: 768px) {
-    .container {
-        grid-template-columns: 1fr;
-    }
-    
-    .panel {
-        padding: 15px;
-    }
-    
-    h1 {
-        font-size: 1.8em;
-    }
+/* Badge stołu */
+.table-badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid #ccc;
+  white-space: nowrap;
 }
+.table-active {
+  background-color: #d1f5ff;
+  border-color: #5bc0de;
+  color: #005f7a;
+}
+.table-wait {
+  background-color: #f5f5f5;
+  border-color: #ccc;
+  color: #777;
+}
+
+/* PLAYOFF – czytelny layout + przewijanie */
+.playoff-toolbar { margin-bottom: 10px; }
+.playoff-legend { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.playoff-note { font-size: 12px; color:#666; margin-top: 6px; }
+
+.playoff-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.playoff-column { min-width: 0; }
+.playoff-column h3 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  color: #222;
+}
+
+.playoff-match {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #e3e3e3;
+  background: rgba(234, 247, 255, 0.65);
+  margin-bottom: 10px;
+}
+.playoff-match.playing {
+  border-color: #5bc0de;
+  background: #eef9ff;
+}
+.playoff-match.completed { opacity: 0.85; }
+.playoff-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.playoff-players {
+  display:grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.playoff-vs {
+  font-size: 12px;
+  color:#666;
+  margin: 2px 0;
+}
+.playoff-scores {
+  display:flex;
+  align-items:center;
+  gap: 8px;
+}
+.playoff-scores input[type="number"] { width: 64px; }
+.playoff-scores .dash { opacity: 0.6; }
+
+@media (max-width: 768px) {
+  .container { grid-template-columns: 1fr; }
+  .panel { padding: 15px; }
+  h1 { font-size: 1.8em; }
+}
+
+
+/* Panel play-off na pełną szerokość */
+.playoff-panel { grid-column: 1 / -1; }
+
+
+/* Panel tablicy stołów na pełną szerokość */
+.table-board-panel { grid-column: 1 / -1; }
