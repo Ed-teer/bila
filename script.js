@@ -1,12 +1,12 @@
 // =======================
-// Turniej bilardowy — script.js (wersja uporządkowana + ręczne rozstrzyganie remisów)
-// Zmiany:
-// - ręczna kolejność przy pełnym remisie (procent + wonGames) w rankingu (↑/↓ tylko dla remisów)
-// - naprawiona walidacja dodawania gracza
-// - ujednolicone gameType jako liczba (wszędzie)
-// - poprawny zapis/odczyt playedPairs (Set) w localStorage
-// - usunięte duplikaty listenerów i konfliktów zmiennych (playoffBracket/currentPlayoffBracket)
-// - drobne poprawki: kolor dla bye, stabilny sort po nazwie jako ostatni tie-break
+// Turniej bilardowy — script.js
+// Liga: round-robin (circle method) + ranking + ręczne rozstrzyganie remisów
+// Play-off: TOP 12 (baraże -> ćwierćfinały -> półfinały -> finał + 3. miejsce)
+// NOWE: Stoły i harmonogram "na żywo"
+// - wybór liczby stołów 3–5
+// - wybór konkretnych numerów stołów (1–9)
+// - przydział stołu tylko dla tylu meczów ile jest stołów
+// - kolejne mecze dostają stół dopiero po zakończeniu (wpisaniu kompletnego wyniku)
 // =======================
 
 // Dane systemu
@@ -22,13 +22,20 @@ const system = {
     isActive: false,
     nextMatchId: 1,
     gameType: 3, // LICZBA
-    manualOrder: {} // ręczna kolejność w obrębie pełnego remisu
+    manualOrder: {}, // ręczna kolejność w obrębie pełnego remisu
+
+    // Stoły
+    tableCount: 3,       // 3–5
+    tables: [1, 2, 3],   // numery 1–9
+    tableScheduler: {    // stan harmonogramu
+      free: [],          // wolne stoły
+      busy: {}           // { tableNumber: matchId }
+    }
   }
 };
 
-// Stały znacznik wolnego losu (używany konsekwentnie w lidze i play-off)
+// Stały znacznik wolnego losu
 const BYE = 'bye';
-
 
 // Elementy DOM
 const playerPoolEl = document.getElementById('playerPool');
@@ -46,6 +53,11 @@ const tournamentStatusEl = document.getElementById('tournamentStatus');
 const currentRoundInfoEl = document.getElementById('currentRoundInfo');
 const playerCountEl = document.getElementById('playerCount');
 const tournamentPlayerCountEl = document.getElementById('tournamentPlayerCount');
+
+// Stoły: DOM
+const tableCountSelectEl = document.getElementById('tableCount');
+const tablesPickerEl = document.getElementById('tablesPicker');
+const tablesHintEl = document.getElementById('tablesHint');
 
 // ===== Pomocnicze =====
 function shuffleArray(array) {
@@ -71,10 +83,7 @@ function updateTournamentPlayerCount() {
   if (tournamentPlayerCountEl) tournamentPlayerCountEl.textContent = system.tournament.players.length;
 }
 
-
-// Dynamiczna lista rund:
-// - standardowo: 3–5
-// - jeśli graczy < 10: pozwól wybrać do pełnego "każdy z każdym"
+// Dynamiczna lista rund
 function refreshRoundsOptions() {
   if (!roundsSelectEl) return;
 
@@ -119,8 +128,7 @@ function refreshRoundsOptions() {
   roundsSelectEl.value = String(nextVal);
 }
 
-
-// ===== LocalStorage (Set + manualOrder) =====
+// ===== LocalStorage =====
 function saveToLocalStorage() {
   const payload = {
     playerPool: system.playerPool,
@@ -142,33 +150,169 @@ function loadFromLocalStorage() {
     system.playerPool = Array.isArray(data.playerPool) ? data.playerPool : [];
 
     const t = data.tournament || {};
+    const parsedPlayedPairs = new Set(Array.isArray(t.playedPairs) ? t.playedPairs : []);
+
+    // Stoły - normalizacja
+    const tableCount = Number.isFinite(parseInt(t.tableCount)) ? parseInt(t.tableCount) : 3;
+    const rawTables = Array.isArray(t.tables) ? t.tables : [1,2,3];
+    const tables = Array.from(new Set(rawTables.map(n => parseInt(n)).filter(n => n >= 1 && n <= 9))).slice(0, tableCount);
+    while (tables.length < tableCount) {
+      for (let i = 1; i <= 9 && tables.length < tableCount; i++) {
+        if (!tables.includes(i)) tables.push(i);
+      }
+    }
+
     system.tournament = {
       players: Array.isArray(t.players) ? t.players : [],
       rounds: Number.isFinite(parseInt(t.rounds)) ? parseInt(t.rounds) : 3,
       currentRound: Number.isFinite(parseInt(t.currentRound)) ? parseInt(t.currentRound) : 0,
       allMatches: Array.isArray(t.allMatches) ? t.allMatches : [],
       playerStats: t.playerStats && typeof t.playerStats === 'object' ? t.playerStats : {},
-      playedPairs: new Set(Array.isArray(t.playedPairs) ? t.playedPairs : []),
+      playedPairs: parsedPlayedPairs,
       isActive: !!t.isActive,
       nextMatchId: Number.isFinite(parseInt(t.nextMatchId)) ? parseInt(t.nextMatchId) : 1,
       gameType: Number.isFinite(parseInt(t.gameType)) ? parseInt(t.gameType) : 3,
-      manualOrder: t.manualOrder && typeof t.manualOrder === 'object' ? t.manualOrder : {}
+      manualOrder: t.manualOrder && typeof t.manualOrder === 'object' ? t.manualOrder : {},
+
+      tableCount,
+      tables,
+      tableScheduler: (t.tableScheduler && typeof t.tableScheduler === 'object') ? t.tableScheduler : { free: [], busy: {} }
     };
   } catch (e) {
     console.warn('Błąd wczytywania localStorage:', e);
   }
 
-  // normalizacja starych zapisów: null -> BYE
+  // normalizacja starych zapisów: null -> BYE + pola match.table
   if (Array.isArray(system.tournament.allMatches)) {
     system.tournament.allMatches.forEach(m => {
       if (m.player1 === null) m.player1 = BYE;
       if (m.player2 === null) m.player2 = BYE;
       m.isBye = (m.player1 === BYE || m.player2 === BYE);
+      if (!('table' in m)) m.table = null;
     });
   }
-
 }
 
+// ===== Stoły: UI =====
+function renderTablesPicker() {
+  if (!tablesPickerEl || !tableCountSelectEl) return;
+
+  const count = Math.max(3, Math.min(5, parseInt(tableCountSelectEl.value) || 3));
+  system.tournament.tableCount = count;
+
+  // stan stołów: unikatowe, 1–9, długość = count
+  const unique = Array.from(new Set((system.tournament.tables || [])
+    .map(n => parseInt(n))
+    .filter(n => n >= 1 && n <= 9)
+  ));
+
+  while (unique.length < count) {
+    for (let t = 1; t <= 9 && unique.length < count; t++) {
+      if (!unique.includes(t)) unique.push(t);
+    }
+  }
+  system.tournament.tables = unique.slice(0, count);
+
+  tablesPickerEl.innerHTML = '';
+
+  for (let i = 0; i < count; i++) {
+    const sel = document.createElement('select');
+    sel.dataset.idx = String(i);
+
+    for (let t = 1; t <= 9; t++) {
+      const opt = document.createElement('option');
+      opt.value = String(t);
+      opt.textContent = `Stół ${t}`;
+      sel.appendChild(opt);
+    }
+
+    sel.value = String(system.tournament.tables[i] || (i + 1));
+
+    sel.addEventListener('change', () => {
+      const idx = parseInt(sel.dataset.idx);
+      const chosen = parseInt(sel.value);
+
+      const otherIdx = system.tournament.tables.findIndex((v, j) => v === chosen && j !== idx);
+      if (otherIdx !== -1) {
+        const tmp = system.tournament.tables[idx];
+        system.tournament.tables[idx] = chosen;
+        system.tournament.tables[otherIdx] = tmp;
+      } else {
+        system.tournament.tables[idx] = chosen;
+      }
+
+      renderTablesPicker();
+      saveToLocalStorage();
+    });
+
+    tablesPickerEl.appendChild(sel);
+  }
+
+  if (tablesHintEl) {
+    tablesHintEl.textContent = `Aktywne stoły: ${system.tournament.tables.join(', ')}.`;
+  }
+
+  // blokada w trakcie turnieju
+  const disabled = !!system.tournament.isActive;
+  tableCountSelectEl.disabled = disabled;
+  tablesPickerEl.querySelectorAll('select').forEach(s => s.disabled = disabled);
+
+  saveToLocalStorage();
+}
+
+// ===== Stoły: harmonogram "na żywo" =====
+function initTableScheduler() {
+  const tables = (system.tournament.tables || [])
+    .map(n => parseInt(n))
+    .filter(n => n >= 1 && n <= 9);
+
+  system.tournament.tableScheduler = {
+    free: [...tables],
+    busy: {}
+  };
+
+  // czyścimy stoły w meczach
+  system.tournament.allMatches.forEach(m => { m.table = null; });
+
+  assignTablesWhilePossible();
+}
+
+function getNextWaitingMatch() {
+  // kolejka globalna: po kolejności w allMatches (czyli po rundach i globalIndex)
+  return system.tournament.allMatches.find(m =>
+    !m.isBye &&
+    !m.completed &&
+    (m.table == null)
+  ) || null;
+}
+
+function assignTablesWhilePossible() {
+  const sch = system.tournament.tableScheduler;
+  if (!sch || !Array.isArray(sch.free)) return;
+
+  while (sch.free.length > 0) {
+    const nextMatch = getNextWaitingMatch();
+    if (!nextMatch) break;
+
+    const table = sch.free.shift();
+    nextMatch.table = table;
+    sch.busy[table] = nextMatch.id;
+  }
+}
+
+function onMatchCompletedReleaseTable(match) {
+  const sch = system.tournament.tableScheduler;
+  if (!sch) return;
+
+  const table = match.table;
+  if (table == null) return;
+
+  if (sch.busy && sch.busy[table] === match.id) {
+    delete sch.busy[table];
+    if (!sch.free.includes(table)) sch.free.push(table);
+    assignTablesWhilePossible();
+  }
+}
 
 // ===== UI: lista graczy =====
 function updatePlayerPool() {
@@ -217,7 +361,6 @@ function updateTournamentPlayersList() {
 function addToPlayerPool() {
   const name = (newPlayerNameEl?.value || '').trim();
 
-  // FIX: poprawna walidacja
   if (!name) {
     alert('Wpisz nazwę gracza!');
     return;
@@ -244,7 +387,7 @@ function removeFromPool(index) {
     system.tournament.players.splice(ti, 1);
     updateTournamentPlayersList();
     updateTournamentPlayerCount();
-  refreshRoundsOptions();
+    refreshRoundsOptions();
     if (startBtnEl) startBtnEl.disabled = system.tournament.players.length < 2;
   }
 
@@ -300,7 +443,7 @@ function startTournament() {
   }
 
   system.tournament.rounds = parseInt(roundsSelectEl.value) || 3;
-  system.tournament.gameType = parseInt(gameTypeSelectEl.value) || 3; // liczba
+  system.tournament.gameType = parseInt(gameTypeSelectEl.value) || 3;
   system.tournament.currentRound = 1;
   system.tournament.allMatches = [];
   system.tournament.playedPairs = new Set();
@@ -308,6 +451,7 @@ function startTournament() {
   system.tournament.nextMatchId = 1;
   system.tournament.manualOrder = {};
 
+  // staty
   system.tournament.playerStats = {};
   system.tournament.players.forEach(player => {
     system.tournament.playerStats[player] = {
@@ -319,6 +463,11 @@ function startTournament() {
   });
 
   generateAllRounds();
+
+  // Harmonogram stołów: start
+  initTableScheduler();
+  renderTablesPicker(); // zablokuje wybór stołów w trakcie
+
   updateTournamentView();
   updateRanking();
   updateTournamentStatus();
@@ -332,6 +481,9 @@ function resetTournament() {
   if (!confirm('Czy na pewno chcesz zresetować turniej? Wszystkie wyniki zostaną utracone.')) return;
 
   const keepPlayers = [...system.tournament.players];
+  const keepTables = [...(system.tournament.tables || [1,2,3])];
+  const keepTableCount = system.tournament.tableCount || 3;
+
   system.tournament = {
     players: keepPlayers,
     rounds: parseInt(roundsSelectEl?.value) || 3,
@@ -342,12 +494,18 @@ function resetTournament() {
     isActive: false,
     nextMatchId: 1,
     gameType: parseInt(gameTypeSelectEl?.value) || 3,
-    manualOrder: {}
+    manualOrder: {},
+
+    tableCount: keepTableCount,
+    tables: keepTables.slice(0, keepTableCount),
+    tableScheduler: { free: [], busy: {} }
   };
 
   if (startBtnEl) startBtnEl.disabled = system.tournament.players.length < 2;
   if (resetBtnEl) resetBtnEl.disabled = true;
   if (exportBtnEl) exportBtnEl.style.display = 'none';
+
+  renderTablesPicker(); // odblokuje wybór stołów
 
   updateTournamentView();
   updateRanking();
@@ -359,10 +517,10 @@ function resetTournament() {
 function generateAllRounds() {
   const roundsToPlay = system.tournament.rounds;
 
-  // OPCJA 1: losujemy kolejność TYLKO RAZ na start turnieju
+  // losujemy kolejność raz na start
   let players = shuffleArray([...system.tournament.players]);
 
-  // Jeśli nieparzysta liczba graczy – dodajemy BYE
+  // nieparzysta liczba -> BYE
   if (players.length % 2 !== 0) {
     players.push(BYE);
   }
@@ -376,10 +534,9 @@ function generateAllRounds() {
 
   const rounds = Math.min(roundsToPlay, maxRounds);
   if (roundsToPlay > maxRounds) {
-    console.warn(`Za dużo rund (${roundsToPlay}). Maksimum bez powtórek dla tej liczby graczy: ${maxRounds}. Ucinam do ${rounds}.`);
+    console.warn(`Za dużo rund (${roundsToPlay}). Maksimum bez powtórek: ${maxRounds}. Ucinam do ${rounds}.`);
   }
 
-  // Circle method (round-robin): brak powtórek = gwarancja
   for (let round = 1; round <= rounds; round++) {
     for (let i = 0; i < n / 2; i++) {
       const p1 = players[i];
@@ -395,6 +552,7 @@ function generateAllRounds() {
         completed: false,
         round,
         isBye,
+        table: null, // NOWE
         globalIndex: system.tournament.allMatches.length
       };
 
@@ -408,11 +566,7 @@ function generateAllRounds() {
     }
 
     // rotacja: pierwszy zostaje, reszta się kręci
-    players = [
-      players[0],
-      players[n - 1],
-      ...players.slice(1, n - 1)
-    ];
+    players = [players[0], players[n - 1], ...players.slice(1, n - 1)];
   }
 }
 
@@ -420,6 +574,14 @@ function generateAllRounds() {
 function updateMatchScore(globalIndex, playerNumber, value) {
   const match = system.tournament.allMatches[globalIndex];
   const winThreshold = system.tournament.gameType;
+
+  // nie pozwalamy edytować meczu bez stołu (bo jeszcze nie gra)
+  if (!match.isBye && match.table == null) {
+    updateTournamentView();
+    return;
+  }
+
+  const wasCompleted = !!match.completed;
 
   const numValue = Math.max(0, Math.min(winThreshold, parseInt(value) || 0));
 
@@ -432,6 +594,11 @@ function updateMatchScore(globalIndex, playerNumber, value) {
   updateStatsAfterEdit(match, prevScore1, prevScore2);
 
   match.completed = (match.score1 === winThreshold || match.score2 === winThreshold);
+
+  // jeśli mecz właśnie się domknął -> zwolnij stół i przydziel kolejny
+  if (!wasCompleted && match.completed) {
+    onMatchCompletedReleaseTable(match);
+  }
 
   const matchElement = document.querySelector(`.match[data-id="${match.id}"]`);
   if (matchElement) {
@@ -458,6 +625,7 @@ function updateMatchScore(globalIndex, playerNumber, value) {
     }
   }
 
+  updateTournamentView(); // odśwież label stołów i blokady
   updateRanking();
   saveToLocalStorage();
 }
@@ -469,6 +637,7 @@ function updateStatsAfterEdit(match, prevScore1, prevScore2) {
   if (!stats[player1]) stats[player1] = { matches: 0, wonGames: 0, totalGames: 0, byes: 0 };
   if (player2 && player2 !== BYE && !stats[player2]) stats[player2] = { matches: 0, wonGames: 0, totalGames: 0, byes: 0 };
 
+  // odejmij stare
   if (player1) {
     stats[player1].wonGames -= prevScore1;
     stats[player1].totalGames -= (prevScore1 + (prevScore2 || 0));
@@ -478,6 +647,7 @@ function updateStatsAfterEdit(match, prevScore1, prevScore2) {
     stats[player2].totalGames -= (prevScore2 + prevScore1);
   }
 
+  // dodaj nowe
   if (player1) {
     stats[player1].wonGames += match.score1;
     stats[player1].totalGames += (match.score1 + (match.score2 || 0));
@@ -677,6 +847,7 @@ function updateTournamentView() {
     rounds[roundNum].forEach(match => {
       const matchDiv = document.createElement('div');
       matchDiv.className = `match ${match.completed ? 'completed' : ''}`;
+      if (!match.completed && match.table != null) matchDiv.classList.add('playing');
       matchDiv.dataset.id = match.id;
       const maxScore = system.tournament.gameType;
 
@@ -684,26 +855,33 @@ function updateTournamentView() {
       const p2 = (match.player2 === null ? BYE : match.player2);
       const p2Label = p2 ? p2 : 'bye';
 
+      const tableLabel = match.isBye
+        ? 'BYE'
+        : (match.table != null ? `Stół ${match.table}` : 'Czeka na stół');
+
+      const disableInputs = match.completed || (!match.isBye && match.table == null);
+
       matchDiv.innerHTML = `
-        <div style="display:flex; align-items:center; gap:10px;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <div class="billiard-ball" style="background:${getPlayerColor(p1)}"></div>
           <strong>${p1}</strong>
           <span>vs</span>
           <strong>${p2Label}</strong>
           <div class="billiard-ball" style="background:${getPlayerColor(p2)}"></div>
+          <span class="table-badge ${match.table != null ? 'table-active' : 'table-wait'}">${tableLabel}</span>
         </div>
         <div class="match-controls">
           <input type="number" min="0" max="${maxScore}"
             value="${match.score1}"
             data-player="1"
             onchange="updateMatchScore(${match.globalIndex}, 1, this.value)"
-            ${match.completed ? 'disabled' : ''}>
+            ${disableInputs ? 'disabled' : ''}>
           <span> - </span>
           <input type="number" min="0" max="${maxScore}"
             value="${match.score2}"
             data-player="2"
             onchange="updateMatchScore(${match.globalIndex}, 2, this.value)"
-            ${match.completed ? 'disabled' : ''}>
+            ${disableInputs ? 'disabled' : ''}>
           ${match.completed ? `<button class="edit-btn" onclick="enableMatchEdit(${match.globalIndex})">Edytuj</button>` : ''}
         </div>
       `;
@@ -726,7 +904,6 @@ function getTop12Players() {
 function getTop12PlayerNames() {
   return getTop12Players().map(p => p.name);
 }
-
 
 function generatePlayoffBracket() {
   const topPlayers = getTop12PlayerNames();
@@ -873,21 +1050,17 @@ function handlePlayoffResults(playoffBracket) {
   playoffBracket.roundOf12.forEach((match, i) => {
     const [a, b] = match;
     const winner = determineWinner(`roundOf12_${i}_a`, `roundOf12_${i}_b`, a, b);
-    if (winner) {
-      const targetMap = [1, 3, 2, 0];
-      playoffBracket.quarterfinals[targetMap[i]][1] = winner;
-    }
+    const targetMap = [1, 3, 2, 0];
+    playoffBracket.quarterfinals[targetMap[i]][1] = winner || null;
   });
 
   // ćwierćfinały -> półfinały
   playoffBracket.quarterfinals.forEach((match, i) => {
     const [a, b] = match;
     const winner = determineWinner(`quarterfinals_${i}_a`, `quarterfinals_${i}_b`, a, b);
-    if (winner) {
-      const semiIndex = i < 2 ? 0 : 1;
-      const pos = i % 2;
-      playoffBracket.semifinals[semiIndex][pos] = winner;
-    }
+    const semiIndex = i < 2 ? 0 : 1;
+    const pos = i % 2;
+    playoffBracket.semifinals[semiIndex][pos] = winner || null;
   });
 
   // półfinały -> finał i 3. miejsce
@@ -896,8 +1069,8 @@ function handlePlayoffResults(playoffBracket) {
     const winner = determineWinner(`semifinals_${i}_a`, `semifinals_${i}_b`, a, b);
     const loser = (winner === a) ? b : (winner === b ? a : null);
 
-    if (winner) playoffBracket.final[i] = winner;
-    if (loser) playoffBracket.thirdPlace[i] = loser;
+    playoffBracket.final[i] = winner || null;
+    playoffBracket.thirdPlace[i] = loser || null;
   });
 
   const finalWinner = determineWinner(`final_0_a`, `final_0_b`, playoffBracket.final[0], playoffBracket.final[1]);
@@ -922,13 +1095,20 @@ document.addEventListener('DOMContentLoaded', () => {
   updateTournamentPlayerCount();
   updateTournamentStatus();
 
+  refreshRoundsOptions();
+
+  // ustaw selecty wg zapisów
+  if (roundsSelectEl) roundsSelectEl.value = String(system.tournament.rounds || 3);
+  if (gameTypeSelectEl) gameTypeSelectEl.value = String(system.tournament.gameType || 3);
+  if (tableCountSelectEl) tableCountSelectEl.value = String(system.tournament.tableCount || 3);
+
+  renderTablesPicker();
+
   updateTournamentView();
   updateRanking();
 
-  // listenery (raz)
+  // listenery
   addPlayerBtnEl?.addEventListener('click', addToPlayerPool);
-
-  // enter w input dodawania
   newPlayerNameEl?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') addToPlayerPool();
   });
@@ -936,9 +1116,16 @@ document.addEventListener('DOMContentLoaded', () => {
   startBtnEl?.addEventListener('click', startTournament);
   resetBtnEl?.addEventListener('click', resetTournament);
 
+  tableCountSelectEl?.addEventListener('change', () => {
+    renderTablesPicker();
+  });
+
   document.getElementById('generatePlayoffBtn')?.addEventListener('click', () => {
     currentPlayoffBracket = generatePlayoffBracket();
-    if (currentPlayoffBracket) displayPlayoffBracket(currentPlayoffBracket);
+    if (currentPlayoffBracket) {
+      initPlayoffScheduler(currentPlayoffBracket);
+      displayPlayoffBracket(currentPlayoffBracket);
+    }
   });
 
   document.getElementById('updatePlayoffBtn')?.addEventListener('click', () => {
@@ -949,3 +1136,361 @@ document.addEventListener('DOMContentLoaded', () => {
   if (startBtnEl) startBtnEl.disabled = system.tournament.players.length < 2 || system.tournament.isActive;
   if (resetBtnEl) resetBtnEl.disabled = !system.tournament.isActive;
 });
+
+
+// =======================
+// PLAY-OFF v2: czytelny widok + stoły (na żywo)
+// =======================
+
+function ensurePlayoffMeta(bracket) {
+  if (!bracket) return;
+  if (!bracket._meta) bracket._meta = { matches: {}, scheduler: { free: [], busy: {} } };
+
+  const mk = (roundKey, idx) => `${roundKey}_${idx}`;
+  const ensure = (roundKey, idx) => {
+    const key = mk(roundKey, idx);
+    if (!bracket._meta.matches[key]) {
+      bracket._meta.matches[key] = { id: key, table: null, completed: false, editing: false };
+    }
+    return bracket._meta.matches[key];
+  };
+
+  (bracket.roundOf12 || []).forEach((_, i) => ensure('roundOf12', i));
+  (bracket.quarterfinals || []).forEach((_, i) => ensure('quarterfinals', i));
+  (bracket.semifinals || []).forEach((_, i) => ensure('semifinals', i));
+  ensure('final', 0);
+  ensure('thirdPlace', 0);
+}
+
+function playoffPlayersReady(p1, p2) {
+  return !!p1 && !!p2 && p1 !== BYE && p2 !== BYE;
+}
+
+function getPlayoffMatch(bracket, roundKey, idx) {
+  if (!bracket) return null;
+  if (roundKey === 'roundOf12') return bracket.roundOf12?.[idx] || null;
+  if (roundKey === 'quarterfinals') return bracket.quarterfinals?.[idx] || null;
+  if (roundKey === 'semifinals') return bracket.semifinals?.[idx] || null;
+  if (roundKey === 'final') return (bracket.final?.length === 2 ? bracket.final : [null, null]);
+  if (roundKey === 'thirdPlace') return (bracket.thirdPlace?.length === 2 ? bracket.thirdPlace : [null, null]);
+  return null;
+}
+
+function playoffIsPlayable(bracket, roundKey, idx) {
+  const match = getPlayoffMatch(bracket, roundKey, idx);
+  if (!match) return false;
+  const [p1, p2] = match;
+  const meta = bracket._meta.matches[`${roundKey}_${idx}`];
+  if (meta?.completed) return false;
+  return playoffPlayersReady(p1, p2);
+}
+
+function initPlayoffScheduler(bracket) {
+  ensurePlayoffMeta(bracket);
+
+  const tables = (system.tournament.tables || []).map(n => parseInt(n)).filter(n => n >= 1 && n <= 9);
+  bracket._meta.scheduler = { free: [...tables], busy: {} };
+
+  // wyczyść stoły tylko przy nowej drabince
+  Object.values(bracket._meta.matches).forEach(m => { m.table = null; m.completed = false; });
+
+  assignPlayoffTablesWhilePossible(bracket);
+}
+
+function assignPlayoffTablesWhilePossible(bracket) {
+  ensurePlayoffMeta(bracket);
+  const sch = bracket._meta.scheduler;
+  if (!sch || !Array.isArray(sch.free)) return;
+
+  const order = [
+    ['roundOf12', 4],
+    ['quarterfinals', 4],
+    ['semifinals', 2],
+    ['final', 1],
+    ['thirdPlace', 1]
+  ];
+
+  const nextPlayable = () => {
+    for (const [rk, count] of order) {
+      for (let i = 0; i < count; i++) {
+        const key = `${rk}_${i}`;
+        const meta = bracket._meta.matches[key];
+        if (!meta) continue;
+        if (meta.table != null) continue;
+        if (meta.completed) continue;
+        if (playoffIsPlayable(bracket, rk, i)) return { rk, i, key, meta };
+      }
+    }
+    return null;
+  };
+
+  while (sch.free.length > 0) {
+    const n = nextPlayable();
+    if (!n) break;
+    const table = sch.free.shift();
+    n.meta.table = table;
+    sch.busy[table] = n.key;
+  }
+}
+
+function releasePlayoffTable(bracket, roundKey, idx) {
+  ensurePlayoffMeta(bracket);
+  const key = `${roundKey}_${idx}`;
+  const meta = bracket._meta.matches[key];
+  if (!meta || meta.table == null) return;
+
+  const table = meta.table;
+  const sch = bracket._meta.scheduler;
+  if (sch?.busy?.[table] === key) {
+    delete sch.busy[table];
+    if (!sch.free.includes(table)) sch.free.push(table);
+  }
+}
+
+// Override: czytelny display + table badge + blokady inputów
+function displayPlayoffBracket(playoffBracket) {
+  const container = document.getElementById('playoffContainer');
+  if (!container) return;
+
+  ensurePlayoffMeta(playoffBracket);
+
+  // zachowaj wpisane wyniki
+  const savedScores = {};
+  container.querySelectorAll('input[type="number"]').forEach(input => {
+    savedScores[input.id] = input.value;
+  });
+
+  container.innerHTML = '';
+
+  const createMatchCard = (roundKey, index) => {
+    const key = `${roundKey}_${index}`;
+    const meta = playoffBracket._meta.matches[key] || { table: null, completed: false };
+    const match = getPlayoffMatch(playoffBracket, roundKey, index) || [null, null];
+    const [player1, player2] = match;
+
+    const card = document.createElement('div');
+    card.className = 'playoff-match';
+
+    const playable = playoffIsPlayable(playoffBracket, roundKey, index);
+    const playing = playable && !meta.completed && meta.table != null;
+
+    if (meta.completed) card.classList.add('completed');
+    if (playing) card.classList.add('playing');
+
+    const tableLabel = meta.completed
+      ? (meta.table != null ? `Stół ${meta.table}` : 'Zakończony')
+      : (meta.editing ? 'Edycja' : (meta.table != null ? `Stół ${meta.table}` : (playable ? 'Czeka' : 'Niegotowy')));
+
+    const badgeClass = (meta.table != null ? 'table-active' : 'table-wait');
+
+    card.innerHTML = `
+      <div class="playoff-header">
+        <div style="font-weight:700; font-size:12px; color:#444;">${roundKey}</div>
+        <span class="table-badge ${badgeClass}">${tableLabel}</span>
+      </div>
+      <div class="playoff-players">
+        <div><strong>${player1 || '???'}</strong></div>
+        <div class="playoff-vs">vs</div>
+        <div><strong>${player2 || '???'}</strong></div>
+      </div>
+      <div class="playoff-scores">
+        <span style="font-size:12px;color:#666;">Wynik:</span>
+        <input type="number" id="${roundKey}_${index}_a" min="0">
+        <span class="dash">-</span>
+        <input type="number" id="${roundKey}_${index}_b" min="0">
+      </div>
+    
+      ${meta.completed ? `<button class="edit-btn" style="margin-top:8px;" onclick="enablePlayoffEdit('${roundKey}', ${index})">Edytuj</button>` : ''}
+`;
+
+    const a = card.querySelector(`#${roundKey}_${index}_a`);
+    const b = card.querySelector(`#${roundKey}_${index}_b`);
+    if (savedScores[a.id] !== undefined) a.value = savedScores[a.id];
+    if (savedScores[b.id] !== undefined) b.value = savedScores[b.id];
+
+    // tylko "grające" (ma stół) są edytowalne
+    const disable = meta.completed || (!playing && !meta.editing);
+    a.disabled = disable;
+    b.disabled = disable;
+
+    // Auto-aktualizacja play-off po zmianie wyniku (tylko dla aktywnych inputów)
+    if (!disable) {
+      a.addEventListener('input', schedulePlayoffAutoUpdate);
+      b.addEventListener('input', schedulePlayoffAutoUpdate);
+      a.addEventListener('change', schedulePlayoffAutoUpdate);
+      b.addEventListener('change', schedulePlayoffAutoUpdate);
+    }
+
+    return card;
+  };
+
+  const addColumn = (title, roundKey, count) => {
+    const col = document.createElement('div');
+    col.className = 'playoff-column';
+    const h = document.createElement('h3');
+    h.textContent = title;
+    col.appendChild(h);
+    for (let i = 0; i < count; i++) col.appendChild(createMatchCard(roundKey, i));
+    container.appendChild(col);
+  };
+
+  addColumn('Baraże', 'roundOf12', 4);
+  addColumn('Ćwierćfinały', 'quarterfinals', 4);
+  addColumn('Półfinały', 'semifinals', 2);
+  addColumn('Finał', 'final', 1);
+  addColumn('Mecz o 3. miejsce', 'thirdPlace', 1);
+}
+
+// Override: wyniki + zwolnienie stołu + nowy przydział
+function handlePlayoffResults(playoffBracket) {
+  ensurePlayoffMeta(playoffBracket);
+
+  // ZMIANA: rozróżniamy "puste" pole od 0.
+  // Dzięki temu wpisanie wyniku zwycięzcy nie blokuje meczu, dopóki nie wpiszesz wyniku przegranego.
+  const getScore = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    const raw = (el.value ?? '').trim();
+    if (raw === '') return null;
+    const n = parseInt(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const winScore = system.tournament.gameType;
+
+  const determineWinner = (idA, idB, playerA, playerB) => {
+    const scoreA = getScore(idA);
+    const scoreB = getScore(idB);
+
+    // WAŻNE: brak zawodnika (null/undefined/???) = mecz jeszcze NIE jest rozstrzygalny.
+    // Auto-awans robimy tylko dla BYE.
+    if (playerA == null || playerB == null) return null;
+    if (playerA === BYE) return playerB;
+    if (playerB === BYE) return playerA;
+
+    // JEŚLI któryś wynik nie jest wpisany -> nie rozstrzygamy
+    if (scoreA == null || scoreB == null) return null;
+
+    // standard: zwycięzca musi dobić do winScore, przegrany ma mniej niż winScore
+    if (scoreA === winScore && scoreB < winScore) return playerA;
+    if (scoreB === winScore && scoreA < winScore) return playerB;
+
+    return null;
+  };
+
+  const syncCompletion = (roundKey, i, winner) => {
+    const key = `${roundKey}_${i}`;
+    const meta = playoffBracket._meta.matches[key];
+    if (!meta) return;
+
+    // jeśli jest zwycięzca -> mecz zakończony
+    if (winner) {
+      if (!meta.completed) {
+        meta.completed = true;
+        meta.editing = false;
+        releasePlayoffTable(playoffBracket, roundKey, i);
+      }
+      return;
+    }
+
+    // jeśli nie ma zwycięzcy (np. korekta wyniku) -> odblokuj mecz
+    if (meta.completed) {
+      meta.completed = false;
+      meta.editing = true;
+    }
+  };
+
+  // baraże -> ćwierćfinały
+  playoffBracket.roundOf12.forEach((match, i) => {
+    const [a, b] = match;
+    const winner = determineWinner(`roundOf12_${i}_a`, `roundOf12_${i}_b`, a, b);
+    syncCompletion('roundOf12', i, winner);
+    const targetMap = [1, 3, 2, 0];
+    playoffBracket.quarterfinals[targetMap[i]][1] = winner || null;
+  });
+
+  // ćwierćfinały -> półfinały
+  playoffBracket.quarterfinals.forEach((match, i) => {
+    const [a, b] = match;
+    const winner = determineWinner(`quarterfinals_${i}_a`, `quarterfinals_${i}_b`, a, b);
+    syncCompletion('quarterfinals', i, winner);
+    const semiIndex = i < 2 ? 0 : 1;
+    const pos = i % 2;
+    playoffBracket.semifinals[semiIndex][pos] = winner || null;
+  });
+
+  // półfinały -> finał i 3. miejsce
+  playoffBracket.semifinals.forEach((match, i) => {
+    const [a, b] = match;
+    const winner = determineWinner(`semifinals_${i}_a`, `semifinals_${i}_b`, a, b);
+    syncCompletion('semifinals', i, winner);
+    const loser = (winner === a) ? b : (winner === b ? a : null);
+
+    playoffBracket.final[i] = winner || null;
+    playoffBracket.thirdPlace[i] = loser || null;
+  });
+
+  // finał
+  const fw = determineWinner(`final_0_a`, `final_0_b`, playoffBracket.final[0], playoffBracket.final[1]);
+  syncCompletion('final', 0, fw);
+
+  // 3 miejsce
+  const tw = determineWinner(`thirdPlace_0_a`, `thirdPlace_0_b`, playoffBracket.thirdPlace[0], playoffBracket.thirdPlace[1]);
+  syncCompletion('thirdPlace', 0, tw);
+
+  // Resetuj meta dla meczów, które stały się "niegotowe" (np. cofnięty wynik w 1/4 usuwa półfinał)
+  const resetIfNotReady = (rk, i) => {
+    const key = `${rk}_${i}`;
+    const meta = playoffBracket._meta.matches[key];
+    if (!meta) return;
+    if (meta.completed) return;
+    if (!playoffIsPlayable(playoffBracket, rk, i) && !meta.editing) {
+      // jeśli mecz nie ma dwóch zawodników, nie powinien być zakończony ani mieć przydzielonego stołu
+      meta.completed = false;
+      meta.table = null;
+    }
+  };
+
+  ['quarterfinals','semifinals'].forEach((rk) => {
+    const count = rk === 'quarterfinals' ? 4 : 2;
+    for (let i = 0; i < count; i++) resetIfNotReady(rk, i);
+  });
+  resetIfNotReady('final', 0);
+  resetIfNotReady('thirdPlace', 0);
+
+  // przydziel stoły do nowo gotowych
+  assignPlayoffTablesWhilePossible(playoffBracket);
+
+  displayPlayoffBracket(playoffBracket);
+}
+
+// --- Auto update play-off (debounce) ---
+let playoffAutoUpdateTimer = null;
+function schedulePlayoffAutoUpdate() {
+  if (!currentPlayoffBracket) return;
+  if (playoffAutoUpdateTimer) clearTimeout(playoffAutoUpdateTimer);
+  playoffAutoUpdateTimer = setTimeout(() => {
+    handlePlayoffResults(currentPlayoffBracket);
+  }, 120);
+}
+
+
+
+
+/* =======================
+   Play-off: ręczna edycja (odblokowanie wyniku)
+   ======================= */
+function enablePlayoffEdit(roundKey, index) {
+  if (!currentPlayoffBracket) return;
+  ensurePlayoffMeta(currentPlayoffBracket);
+
+  const key = `${roundKey}_${index}`;
+  const meta = currentPlayoffBracket._meta.matches[key];
+  if (!meta) return;
+
+  // Włącz tryb edycji: pozwala poprawić wynik nawet bez stołu (to korekta, nie "mecz w trakcie")
+  meta.completed = false;
+  meta.editing = true;
+
+  displayPlayoffBracket(currentPlayoffBracket);
+}
