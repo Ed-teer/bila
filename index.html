@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Turniej Bilardowy - System Organizacji</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
-  <style>
-    /* CSS zostanie dodany w kolejnej części */
-  </style>
+  <link rel="stylesheet" href="style_with_tables_v4.css">
 </head>
 <body>
   <h1>🎱 Turniej Bilardowy</h1>
@@ -54,6 +52,21 @@
           <option value="5">5-wygrane</option>
         </select>
       </div>
+
+      <div style="margin-top:12px;">
+        <label for="tableCount">Liczba stołów (3–5):</label>
+        <select id="tableCount">
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+      </div>
+
+      <div style="margin-top:12px;">
+        <div style="font-weight:700; margin-bottom:6px;">Wybierz stoły (numery 1–9):</div>
+        <div id="tablesPicker" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
+        <div id="tablesHint" style="font-size:12px; color:#666; margin-top:6px;"></div>
+      </div>
     </div>
 
     <!-- Panel meczów -->
@@ -86,16 +99,22 @@
       </table>
 
       <button type="button" id="generatePlayoffBtn">🔁 Wygeneruj drabinkę play-off</button>
-      <button type="button" id="updatePlayoffBtn">🔁 Aktualizuj wyniki drabinki</button>
-    </div>
+          </div>
 
     <!-- Panel play-off -->
-    <div class="panel">
+    <div class="panel playoff-panel">
       <h2>🏁 Drabinka play-off</h2>
-      <div id="playoffContainer"></div>
+      <div class="playoff-toolbar">
+        <div class="playoff-legend">
+          <span class="table-badge table-active">Stół X</span>
+          <span class="table-badge table-wait">Czeka</span>
+        </div>
+        <div class="playoff-note">W play-off stół dostają tylko mecze gotowe (dwóch zawodników) i nieukończone.</div>
+      </div>
+      <div id="playoffContainer" class="playoff-container"></div>
     </div>
   </div>
 
-  <script src="script.js"></script>
+  <script src="script_with_tables_v10.js"></script>
 </body>
 </html>
